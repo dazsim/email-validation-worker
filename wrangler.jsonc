@@ -1,6 +1,12 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "email-validation-worker",
-  "main": "src/index.ts",
-  "compatibility_date": "2025-06-17"
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "email-validation-worker",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-06-17",
+	"kv_namespaces": [
+		{
+			"binding": "CACHE",
+			"id": "94c5d5cc33b444bd9b0d4cf2d946fc1a"
+		}
+	]
 }

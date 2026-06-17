@@ -50,7 +50,7 @@ async function handleHealth(): Promise<Response> {
   });
 }
 
-async function handleValidate(request: Request): Promise<Response> {
+async function handleValidate(request: Request, env: Env): Promise<Response> {
   let body: ValidateRequest;
 
   try {
@@ -63,7 +63,7 @@ async function handleValidate(request: Request): Promise<Response> {
     return jsonResponse<ErrorResponse>({ error: "missing_email" }, 400);
   }
 
-  const result: ValidateResponse = await validateEmail(body.email);
+  const result: ValidateResponse = await validateEmail(body.email, env);
   return jsonResponse(result);
 }
 
@@ -88,7 +88,7 @@ export default {
     }
 
     if (url.pathname === "/validate" && request.method === "POST") {
-      return handleValidate(request);
+      return handleValidate(request, env);
     }
 
     if (request.method !== "GET" && request.method !== "POST") {

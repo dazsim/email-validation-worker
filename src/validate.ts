@@ -1,5 +1,8 @@
 import { parse } from "tldts";
-import type { ValidateResponse } from "./types";
+import { lookupMx, mxHostsResolve } from "./dns";
+import { isDisposableDomain } from "./disposable";
+import type { ValidateResponse, ValidationChecks } from "./types";
+import { collectWarnings } from "./warnings";
 
 const EMAIL_MAX_LENGTH = 254;
 const LOCAL_MAX_LENGTH = 64;
@@ -8,19 +11,6 @@ const DOMAIN_MAX_LENGTH = 253;
 const LOCAL_PART_PATTERN = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+$/i;
 const DOMAIN_PART_PATTERN =
   /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i;
-
-interface DnsAnswer {
-  type?: number;
-  data?: string;
-}
-
-interface DnsResponse {
-  Status?: number;
-  Answer?: DnsAnswer[];
-}
-
-const DNS_MX_TYPE = 15;
-const DNS_A_TYPE = 1;
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -58,113 +48,180 @@ function isValidSyntax(email: string): boolean {
   return LOCAL_PART_PATTERN.test(local) && DOMAIN_PART_PATTERN.test(domain);
 }
 
-function hasValidPublicSuffix(domain: string): boolean {
+function getRegistrableDomain(domain: string): string | null {
   const { publicSuffix, domain: registrableDomain, isIcann, isPrivate } = parse(domain, {
     allowPrivateDomains: true,
   });
 
   if (!publicSuffix || !registrableDomain) {
-    return false;
-  }
-
-  return isIcann === true || isPrivate === true;
-}
-
-function extractDomain(email: string): string {
-  return email.slice(email.indexOf("@") + 1);
-}
-
-function parseMxRecords(answers: DnsAnswer[] | undefined): string[] {
-  if (!answers) {
-    return [];
-  }
-
-  return answers
-    .filter((answer) => answer.type === DNS_MX_TYPE && typeof answer.data === "string")
-    .map((answer) => answer.data as string)
-    .sort();
-}
-
-async function queryDns(domain: string, type: number): Promise<DnsResponse | null> {
-  const url = new URL("https://cloudflare-dns.com/dns-query");
-  url.searchParams.set("name", domain);
-  url.searchParams.set("type", String(type));
-
-  try {
-    const response = await fetch(url.toString(), {
-      headers: {
-        Accept: "application/dns-json",
-      },
-    });
-
-    if (!response.ok) {
-      return null;
-    }
-
-    return (await response.json()) as DnsResponse;
-  } catch {
     return null;
   }
+
+  if (isIcann !== true && isPrivate !== true) {
+    return null;
+  }
+
+  return registrableDomain;
 }
 
-async function hasMxRecords(domain: string): Promise<{ ok: boolean; records: string[] }> {
-  const mxResponse = await queryDns(domain, DNS_MX_TYPE);
-  if (!mxResponse) {
-    return { ok: false, records: [] };
-  }
-
-  const mxRecords = parseMxRecords(mxResponse.Answer);
-  if (mxRecords.length > 0) {
-    return { ok: true, records: mxRecords };
-  }
-
-  const aResponse = await queryDns(domain, DNS_A_TYPE);
-  if (!aResponse || aResponse.Status !== 0) {
-    return { ok: false, records: [] };
-  }
-
-  const hasARecord = (aResponse.Answer ?? []).some((answer) => answer.type === DNS_A_TYPE);
-  return { ok: hasARecord, records: [] };
+function failedChecks(overrides: Partial<ValidationChecks> = {}): ValidationChecks {
+  return {
+    syntax: false,
+    public_suffix: false,
+    mx: false,
+    mx_resolves: false,
+    not_disposable: false,
+    ...overrides,
+  };
 }
 
-export async function validateEmail(rawEmail: string): Promise<ValidateResponse> {
+function buildResponse(
+  email: string,
+  valid: boolean,
+  checks: ValidationChecks,
+  options: {
+    reason?: string;
+    mxRecords?: string[];
+    warnings?: ValidateResponse["warnings"];
+    typoSuggestion?: string;
+    domain?: string;
+  } = {},
+): ValidateResponse {
+  const response: ValidateResponse = {
+    email,
+    valid,
+    checks,
+  };
+
+  if (options.mxRecords && options.mxRecords.length > 0) {
+    response.mx_records = options.mxRecords;
+  }
+
+  if (options.reason) {
+    response.reason = options.reason;
+  }
+
+  const warningData =
+    options.warnings || options.typoSuggestion
+      ? { warnings: options.warnings, typoSuggestion: options.typoSuggestion }
+      : options.domain
+        ? collectWarnings(email, options.domain)
+        : null;
+
+  if (warningData?.warnings && warningData.warnings.length > 0) {
+    response.warnings = warningData.warnings;
+  }
+
+  if (warningData?.typoSuggestion) {
+    response.typo_suggestion = warningData.typoSuggestion;
+  }
+
+  return response;
+}
+
+export async function validateEmail(rawEmail: string, env: Env): Promise<ValidateResponse> {
   const email = normalizeEmail(rawEmail);
 
   if (!isValidSyntax(email)) {
-    return {
-      email,
-      valid: false,
-      checks: { syntax: false, mx: false },
+    return buildResponse(email, false, failedChecks({ syntax: false }), {
       reason: "invalid_syntax",
-    };
+    });
   }
 
-  const domain = extractDomain(email);
+  const domain = email.slice(email.indexOf("@") + 1);
+  const registrableDomain = getRegistrableDomain(domain);
 
-  if (!hasValidPublicSuffix(domain)) {
-    return {
-      email,
-      valid: false,
-      checks: { syntax: false, mx: false },
+  if (!registrableDomain) {
+    return buildResponse(email, false, failedChecks({ syntax: true }), {
       reason: "invalid_public_suffix",
-    };
+    });
   }
 
-  const mxResult = await hasMxRecords(domain);
+  if (isDisposableDomain(registrableDomain)) {
+    return buildResponse(
+      email,
+      false,
+      failedChecks({
+        syntax: true,
+        public_suffix: true,
+        not_disposable: false,
+      }),
+      { reason: "disposable" },
+    );
+  }
+
+  const mxResult = await lookupMx(domain, env.CACHE);
+
+  if (mxResult.nullMx) {
+    return buildResponse(
+      email,
+      false,
+      failedChecks({
+        syntax: true,
+        public_suffix: true,
+        not_disposable: true,
+        mx: false,
+      }),
+      { reason: "null_mx", mxRecords: mxResult.records, domain },
+    );
+  }
 
   if (!mxResult.ok) {
-    return {
+    return buildResponse(
       email,
-      valid: false,
-      checks: { syntax: true, mx: false },
-      reason: "no_mx_records",
-    };
+      false,
+      failedChecks({
+        syntax: true,
+        public_suffix: true,
+        not_disposable: true,
+        mx: false,
+      }),
+      { reason: "no_mx_records", domain },
+    );
   }
 
-  return {
+  const mxResolves = await mxHostsResolve(
+    mxResult.hosts,
+    mxResult.usedARecordFallback,
+    domain,
+    env.CACHE,
+  );
+
+  if (!mxResolves) {
+    return buildResponse(
+      email,
+      false,
+      failedChecks({
+        syntax: true,
+        public_suffix: true,
+        not_disposable: true,
+        mx: true,
+        mx_resolves: false,
+      }),
+      {
+        reason: "mx_host_unresolvable",
+        mxRecords: mxResult.records,
+        domain,
+      },
+    );
+  }
+
+  const { warnings, typoSuggestion } = collectWarnings(email, domain);
+
+  return buildResponse(
     email,
-    valid: true,
-    checks: { syntax: true, mx: true },
-    mx_records: mxResult.records.length > 0 ? mxResult.records : undefined,
-  };
+    true,
+    {
+      syntax: true,
+      public_suffix: true,
+      mx: true,
+      mx_resolves: true,
+      not_disposable: true,
+    },
+    {
+      mxRecords: mxResult.records,
+      warnings,
+      typoSuggestion,
+    },
+  );
 }

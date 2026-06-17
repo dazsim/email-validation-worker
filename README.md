@@ -1,6 +1,6 @@
 # Email Validation Worker
 
-A Cloudflare Worker that validates email addresses via syntax check and DNS MX lookup. All endpoints require API key authentication.
+A Cloudflare Worker that validates email addresses with syntax, public suffix, disposable domain, and DNS checks. All endpoints require API key authentication.
 
 ## Prerequisites
 
@@ -15,6 +15,16 @@ cp .dev.vars.example .dev.vars
 ```
 
 Edit `.dev.vars` and set a local API key (never commit this file).
+
+### KV namespace (production)
+
+DNS results are cached in Workers KV. Create a namespace before first production deploy:
+
+```bash
+npx wrangler kv namespace create CACHE
+```
+
+Copy the returned `id` into [`wrangler.jsonc`](wrangler.jsonc) under `kv_namespaces`. Local `wrangler dev` works without a real namespace id.
 
 ## Local development
 
@@ -45,6 +55,18 @@ curl -X POST http://localhost:8787/validate \
   -H "Authorization: Bearer dev-key-change-me" \
   -H "Content-Type: application/json" \
   -d '{"email":"not-an-email"}'
+
+# Disposable domain
+curl -X POST http://localhost:8787/validate \
+  -H "Authorization: Bearer dev-key-change-me" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@mailinator.com"}'
+
+# Role address warning
+curl -X POST http://localhost:8787/validate \
+  -H "Authorization: Bearer dev-key-change-me" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@gmail.com"}'
 ```
 
 ## Deploy
@@ -55,13 +77,15 @@ curl -X POST http://localhost:8787/validate \
    npx wrangler login
    ```
 
-2. Set the production API key (one-time, or when rotating):
+2. Create KV namespace (first time only) and update `wrangler.jsonc` with the namespace id.
+
+3. Set the production API key (one-time, or when rotating):
 
    ```bash
    npx wrangler secret put API_KEY
    ```
 
-3. Deploy:
+4. Deploy:
 
    ```bash
    npm run deploy
@@ -99,10 +123,20 @@ Success response:
 {
   "email": "user@example.com",
   "valid": true,
-  "checks": { "syntax": true, "mx": true },
-  "mx_records": ["5 gmail-smtp-in.l.google.com."]
+  "checks": {
+    "syntax": true,
+    "public_suffix": true,
+    "mx": true,
+    "mx_resolves": true,
+    "not_disposable": true
+  },
+  "mx_records": ["5 gmail-smtp-in.l.google.com."],
+  "warnings": ["role_address"],
+  "typo_suggestion": "gmail.com"
 }
 ```
+
+`warnings` and `typo_suggestion` are only included when applicable. Warnings do not cause `valid: false`.
 
 Failure response:
 
@@ -110,7 +144,13 @@ Failure response:
 {
   "email": "user@bad-domain.invalid",
   "valid": false,
-  "checks": { "syntax": true, "mx": false },
+  "checks": {
+    "syntax": true,
+    "public_suffix": true,
+    "mx": false,
+    "mx_resolves": false,
+    "not_disposable": true
+  },
   "reason": "no_mx_records"
 }
 ```
@@ -129,13 +169,29 @@ Failure response:
 ## Validation
 
 1. **Syntax** — RFC-style format check (local part, domain labels, length limits)
-2. **Public suffix** — domain suffix validated against the [Public Suffix List](https://publicsuffix.org/) via [`tldts`](https://www.npmjs.com/package/tldts); rejects unknown suffixes like `.con`
-3. **MX** — DNS MX record lookup via Cloudflare DNS-over-HTTPS; falls back to A record per RFC 5321
+2. **Public suffix** — domain suffix validated against the [Public Suffix List](https://publicsuffix.org/) via [`tldts`](https://www.npmjs.com/package/tldts)
+3. **Disposable** — registrable domain checked against a curated blocklist ([`src/data/disposable-domains.ts`](src/data/disposable-domains.ts))
+4. **MX** — DNS MX lookup via Cloudflare DNS-over-HTTPS; falls back to A record per RFC 5321
+5. **Null MX** — rejects domains with RFC 7505 null MX records (`MX 0 .`)
+6. **MX resolves** — each MX hostname must resolve to an A or AAAA record
+7. **Warnings** — soft signals for role addresses (`admin@`, `noreply@`, etc.) and possible typos of common providers (e.g. `gmial.com` → `gmail.com`)
+
+DNS MX and hostname resolution results are cached in Workers KV for 1 hour.
 
 ### Validation failure reasons
 
 | `reason` | Meaning |
 |----------|---------|
 | `invalid_syntax` | Malformed email structure or characters |
-| `invalid_public_suffix` | Format is valid but the domain suffix is not a known ICANN or private public suffix |
-| `no_mx_records` | Domain passed syntax/PSL checks but has no MX or A record |
+| `invalid_public_suffix` | Domain suffix is not a known ICANN or private public suffix |
+| `disposable` | Domain is on the disposable email blocklist |
+| `null_mx` | Domain explicitly rejects mail via a null MX record |
+| `no_mx_records` | Domain has no MX or A record for mail |
+| `mx_host_unresolvable` | MX records exist but at least one MX hostname does not resolve |
+
+### Warnings (valid may still be true)
+
+| `warnings` value | Meaning |
+|------------------|---------|
+| `role_address` | Local part matches a common role/no-reply prefix |
+| `possible_typo` | Domain is one character away from a common provider; see `typo_suggestion` |

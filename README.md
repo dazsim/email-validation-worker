@@ -29,7 +29,15 @@ The committed [`wrangler.jsonc`](wrangler.jsonc) declares the `CACHE` KV binding
 
 Workers Builds (Git push deploys) will use this binding. The namespace id stays in Cloudflare only — it is not written back to the repo.
 
-Set `API_KEY` the same way: **Settings** → **Variables and Secrets** → **Add** → Secret, or run `npx wrangler secret put API_KEY`.
+Set `API_KEY` as a **Worker secret** (recommended for this project):
+
+```bash
+npx wrangler secret put API_KEY
+```
+
+Or via dashboard: **Settings** → **Variables and Secrets** → **Add** → type **Secret** (not Secrets Store).
+
+> **Note:** If you use **Secrets Store** instead, the binding is async (`await env.API_KEY.get()`). The worker supports both Worker secrets and Secrets Store bindings.
 
 ### KV namespace (optional local override)
 

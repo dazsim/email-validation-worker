@@ -1,3 +1,17 @@
+type ApiKeyBinding = string | SecretsStoreSecret;
+
+async function resolveApiKey(apiKey: ApiKeyBinding | undefined): Promise<string | null> {
+  if (!apiKey) {
+    return null;
+  }
+
+  if (typeof apiKey === "string") {
+    return apiKey.trim();
+  }
+
+  return (await apiKey.get()).trim();
+}
+
 function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) {
     return false;
@@ -16,16 +30,18 @@ function parseBearerToken(authorization: string | null): string | null {
     return null;
   }
 
-  const [scheme, token] = authorization.split(" ");
-  if (scheme?.toLowerCase() !== "bearer" || !token) {
+  const [scheme, ...tokenParts] = authorization.split(" ");
+  if (scheme?.toLowerCase() !== "bearer" || tokenParts.length === 0) {
     return null;
   }
 
-  return token;
+  const token = tokenParts.join(" ").trim();
+  return token || null;
 }
 
-export function isAuthorized(request: Request, env: Env): boolean {
-  if (!env.API_KEY) {
+export async function isAuthorized(request: Request, env: Env): Promise<boolean> {
+  const expectedKey = await resolveApiKey(env.API_KEY);
+  if (!expectedKey) {
     return false;
   }
 
@@ -34,5 +50,5 @@ export function isAuthorized(request: Request, env: Env): boolean {
     return false;
   }
 
-  return timingSafeEqual(token, env.API_KEY);
+  return timingSafeEqual(token, expectedKey);
 }

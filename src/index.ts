@@ -31,12 +31,12 @@ function misconfigured(): Response {
   return jsonResponse<ErrorResponse>({ error: "server_misconfigured" }, 500);
 }
 
-function requireAuth(request: Request, env: Env): Response | null {
+async function requireAuth(request: Request, env: Env): Promise<Response | null> {
   if (!env.API_KEY) {
     return misconfigured();
   }
 
-  if (!isAuthorized(request, env)) {
+  if (!(await isAuthorized(request, env))) {
     return unauthorized();
   }
 
@@ -78,7 +78,7 @@ export default {
       });
     }
 
-    const authError = requireAuth(request, env);
+    const authError = await requireAuth(request, env);
     if (authError) {
       return authError;
     }

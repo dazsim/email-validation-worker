@@ -16,15 +16,18 @@ cp .dev.vars.example .dev.vars
 
 Edit `.dev.vars` and set a local API key (never commit this file).
 
-### KV namespace (production)
+### KV namespace (local + production)
 
-DNS results are cached in Workers KV. Create a namespace before first production deploy:
+The committed [`wrangler.jsonc`](wrangler.jsonc) uses a placeholder KV namespace id. Keep your real id in a local copy that is not committed:
 
 ```bash
+cp wrangler.jsonc wrangler.local.jsonc
 npx wrangler kv namespace create CACHE
 ```
 
-Copy the returned `id` into [`wrangler.jsonc`](wrangler.jsonc) under `kv_namespaces`. Local `wrangler dev` works without a real namespace id.
+Paste the returned `id` into `wrangler.local.jsonc` (gitignored). `npm run dev` and `npm run deploy` use that file.
+
+For CI or Workers Builds, inject the real id into `wrangler.jsonc` from a secret, or configure the KV binding in the Cloudflare dashboard.
 
 ## Local development
 
@@ -195,3 +198,7 @@ DNS MX and hostname resolution results are cached in Workers KV for 1 hour.
 |------------------|---------|
 | `role_address` | Local part matches a common role/no-reply prefix |
 | `possible_typo` | Domain is one character away from a common provider; see `typo_suggestion` |
+
+### Licence
+
+MIT

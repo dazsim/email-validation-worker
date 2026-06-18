@@ -6,7 +6,7 @@
 	"kv_namespaces": [
 		{
 			"binding": "CACHE",
-			"id": "94c5d5cc33b444bd9b0d4cf2d946fc1a"
+			"id": "your-kv-namespace-id"
 		}
 	]
 }

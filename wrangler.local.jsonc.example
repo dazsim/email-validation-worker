@@ -5,7 +5,8 @@
 	"compatibility_date": "2025-06-17",
 	"kv_namespaces": [
 		{
-			"binding": "CACHE"
+			"binding": "CACHE",
+			"id": "your-kv-namespace-id"
 		}
 	]
 }

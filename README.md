@@ -16,18 +16,30 @@ cp .dev.vars.example .dev.vars
 
 Edit `.dev.vars` and set a local API key (never commit this file).
 
-### KV namespace (local + production)
+### KV cache binding (production)
 
-The committed [`wrangler.jsonc`](wrangler.jsonc) uses a placeholder KV namespace id. Keep your real id in a local copy that is not committed:
+The committed [`wrangler.jsonc`](wrangler.jsonc) declares the `CACHE` KV binding **without a namespace id** so the repo stays safe to publish as OSS. Cloudflare resolves the real namespace at deploy time.
+
+**Link your existing KV namespace in the dashboard:**
+
+1. Cloudflare dashboard → **Workers & Pages** → your worker
+2. **Settings** → **Bindings** → **Add**
+3. Type: **KV namespace**, variable name: `CACHE` (must match wrangler.jsonc)
+4. Select your existing KV namespace → **Deploy**
+
+Workers Builds (Git push deploys) will use this binding. The namespace id stays in Cloudflare only — it is not written back to the repo.
+
+Set `API_KEY` the same way: **Settings** → **Variables and Secrets** → **Add** → Secret, or run `npx wrangler secret put API_KEY`.
+
+### KV namespace (optional local override)
+
+Local `wrangler dev` simulates KV automatically with the binding-only config. To point at a specific remote namespace during development:
 
 ```bash
-cp wrangler.jsonc wrangler.local.jsonc
-npx wrangler kv namespace create CACHE
+cp wrangler.local.jsonc.example wrangler.local.jsonc
+# add your namespace id to wrangler.local.jsonc (gitignored)
+npm run dev -- -c wrangler.local.jsonc
 ```
-
-Paste the returned `id` into `wrangler.local.jsonc` (gitignored). `npm run dev` and `npm run deploy` use that file.
-
-For CI or Workers Builds, inject the real id into `wrangler.jsonc` from a secret, or configure the KV binding in the Cloudflare dashboard.
 
 ## Local development
 
@@ -80,21 +92,19 @@ curl -X POST http://localhost:8787/validate \
    npx wrangler login
    ```
 
-2. Create KV namespace (first time only) and update `wrangler.jsonc` with the namespace id.
-
-3. Set the production API key (one-time, or when rotating):
+2. Configure production bindings in the Cloudflare dashboard (see [KV cache binding](#kv-cache-binding-production)) and set the API key:
 
    ```bash
    npx wrangler secret put API_KEY
    ```
 
-4. Deploy:
+3. Deploy manually (optional — Git push deploys automatically if Workers Builds is connected):
 
    ```bash
    npm run deploy
    ```
 
-If using Workers Builds (Git-linked deploy), pushing to `main` deploys automatically — but you still need to set `API_KEY` via the dashboard or `wrangler secret put`.
+If using Workers Builds (Git-linked deploy), pushing to `main` deploys automatically once dashboard bindings and `API_KEY` are configured.
 
 ## API
 

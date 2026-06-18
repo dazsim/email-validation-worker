@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "wrangler dev -c wrangler.local.jsonc",
-    "deploy": "wrangler deploy -c wrangler.local.jsonc",
-    "types": "wrangler types -c wrangler.local.jsonc"
+    "dev": "wrangler dev -c wrangler.jsonc",
+    "deploy": "wrangler deploy -c wrangler.jsonc",
+    "types": "wrangler types -c wrangler.jsonc"
   },
   "devDependencies": {
     "typescript": "^5.8.3",

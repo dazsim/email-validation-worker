@@ -29,7 +29,7 @@ The committed [`wrangler.jsonc`](wrangler.jsonc) declares the `CACHE` KV binding
 
 Workers Builds (Git push deploys) will use this binding. The namespace id stays in Cloudflare only — it is not written back to the repo.
 
-Set `API_KEY` as a **Worker secret** (recommended for this project):
+Set `API_KEY` as a **Worker secret** (recommended for Git deploy):
 
 ```bash
 npx wrangler secret put API_KEY
@@ -37,7 +37,9 @@ npx wrangler secret put API_KEY
 
 Or via dashboard: **Settings** → **Variables and Secrets** → **Add** → type **Secret** (not Secrets Store).
 
-> **Note:** If you use **Secrets Store** instead, the binding is async (`await env.API_KEY.get()`). The worker supports both Worker secrets and Secrets Store bindings.
+[`wrangler.jsonc`](wrangler.jsonc) declares `"secrets": { "required": ["API_KEY"] }` so Git deploys keep the binding. The secret **value** stays in Cloudflare only.
+
+> **Important:** Secrets Store bindings added only in the dashboard are **removed on each Git deploy** unless also declared in `wrangler.jsonc` via `secrets_store_secrets`. For this worker, use a regular Worker secret instead.
 
 ### KV namespace (optional local override)
 
@@ -185,7 +187,28 @@ Failure response:
 | 400 | `missing_email` | `email` field missing or not a string |
 | 404 | `not_found` | Unknown path |
 | 405 | `method_not_allowed` | Unsupported HTTP method |
-| 500 | `server_misconfigured` | `API_KEY` secret not set |
+| 500 | `server_misconfigured` | `API_KEY` not bound on the deployed worker (see troubleshooting below) |
+
+### Troubleshooting `server_misconfigured`
+
+This means `env.API_KEY` is missing on the **deployed** worker — the key value in Cloudflare never reached the running script.
+
+**Most common cause:** API_KEY was added via Secrets Store or dashboard only, but Git auto-deploy uses [`wrangler.jsonc`](wrangler.jsonc) which did not declare it. Each push redeploys without the binding.
+
+**Fix:**
+
+1. Dashboard → your worker → **Settings** → **Bindings** / **Variables and Secrets**
+2. Remove any **Secrets Store** binding for `API_KEY` (if present)
+3. **Add** → type **Secret** (Worker secret) → name `API_KEY` → paste your key → **Deploy**
+4. Push the updated `wrangler.jsonc` (with `secrets.required`) and wait for the build to finish
+5. Retry:
+
+   ```bash
+   curl https://<your-worker>.workers.dev/ \
+     -H "Authorization: Bearer <your-key>"
+   ```
+
+You should get `200` on `GET /`, or `401` if the key is wrong — not `500`.
 
 ## Validation
 

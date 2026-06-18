@@ -5,11 +5,15 @@ async function resolveApiKey(apiKey: ApiKeyBinding | undefined): Promise<string 
     return null;
   }
 
-  if (typeof apiKey === "string") {
-    return apiKey.trim();
-  }
+  try {
+    if (typeof apiKey === "string") {
+      return apiKey.trim();
+    }
 
-  return (await apiKey.get()).trim();
+    return (await apiKey.get()).trim();
+  } catch {
+    return null;
+  }
 }
 
 function timingSafeEqual(a: string, b: string): boolean {
@@ -37,6 +41,10 @@ function parseBearerToken(authorization: string | null): string | null {
 
   const token = tokenParts.join(" ").trim();
   return token || null;
+}
+
+export async function getExpectedApiKey(env: Env): Promise<string | null> {
+  return resolveApiKey(env.API_KEY);
 }
 
 export async function isAuthorized(request: Request, env: Env): Promise<boolean> {

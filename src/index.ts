@@ -1,4 +1,4 @@
-import { isAuthorized } from "./auth";
+import { getExpectedApiKey, isAuthorized } from "./auth";
 import type {
   ErrorResponse,
   HealthResponse,
@@ -32,7 +32,8 @@ function misconfigured(): Response {
 }
 
 async function requireAuth(request: Request, env: Env): Promise<Response | null> {
-  if (!env.API_KEY) {
+  const expectedKey = await getExpectedApiKey(env);
+  if (!expectedKey) {
     return misconfigured();
   }
 

@@ -59,6 +59,16 @@ npm run dev
 
 The worker runs at `http://localhost:8787`.
 
+### API test page
+
+A simple local UI is in [`test/api-tester.html`](test/api-tester.html). It accepts the API path, key, and email address, then shows the JSON response.
+
+```bash
+npm run test:ui
+```
+
+Open `http://localhost:3000/api-tester.html`. Start `npm run dev` in another terminal so the worker is running. Defaults to `http://localhost:8787` — change the path to test production.
+
 ### Test requests
 
 ```bash

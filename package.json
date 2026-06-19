@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "wrangler dev -c wrangler.jsonc",
     "deploy": "wrangler deploy -c wrangler.jsonc",
-    "types": "wrangler types -c wrangler.jsonc"
+    "types": "wrangler types -c wrangler.jsonc",
+    "test:ui": "npx --yes serve test -p 3000"
   },
   "devDependencies": {
     "typescript": "^5.8.3",

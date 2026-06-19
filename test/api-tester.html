@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Email Validation API Tester</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, -apple-system, sans-serif;
+        line-height: 1.5;
+      }
+
+      body {
+        margin: 0;
+        padding: 2rem;
+        background: #f4f4f5;
+        color: #18181b;
+      }
+
+      main {
+        max-width: 42rem;
+        margin: 0 auto;
+        background: #fff;
+        border: 1px solid #e4e4e7;
+        border-radius: 0.75rem;
+        padding: 1.5rem;
+        box-shadow: 0 1px 2px rgb(0 0 0 / 6%);
+      }
+
+      h1 {
+        margin: 0 0 0.25rem;
+        font-size: 1.5rem;
+      }
+
+      p {
+        margin: 0 0 1.5rem;
+        color: #52525b;
+      }
+
+      label {
+        display: block;
+        font-size: 0.875rem;
+        font-weight: 600;
+        margin-bottom: 0.375rem;
+      }
+
+      input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 0.625rem 0.75rem;
+        border: 1px solid #d4d4d8;
+        border-radius: 0.5rem;
+        font: inherit;
+        margin-bottom: 1rem;
+      }
+
+      .actions {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-bottom: 1.5rem;
+      }
+
+      button {
+        font: inherit;
+        padding: 0.625rem 1rem;
+        border: 0;
+        border-radius: 0.5rem;
+        cursor: pointer;
+        background: #18181b;
+        color: #fff;
+      }
+
+      button.secondary {
+        background: #e4e4e7;
+        color: #18181b;
+      }
+
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .meta {
+        font-size: 0.875rem;
+        color: #52525b;
+        margin-bottom: 0.5rem;
+      }
+
+      pre {
+        margin: 0;
+        padding: 1rem;
+        background: #18181b;
+        color: #f4f4f5;
+        border-radius: 0.5rem;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+        min-height: 6rem;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #09090b;
+          color: #fafafa;
+        }
+
+        main {
+          background: #18181b;
+          border-color: #3f3f46;
+        }
+
+        p,
+        .meta {
+          color: #a1a1aa;
+        }
+
+        input {
+          background: #09090b;
+          border-color: #3f3f46;
+          color: #fafafa;
+        }
+
+        button.secondary {
+          background: #3f3f46;
+          color: #fafafa;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Email Validation API Tester</h1>
+      <p>Local page for testing your worker. Values are saved in this browser only.</p>
+
+      <form id="tester-form">
+        <label for="api-path">API path</label>
+        <input
+          id="api-path"
+          name="api-path"
+          type="url"
+          placeholder="http://localhost:8787"
+          required
+        />
+
+        <label for="api-key">API key</label>
+        <input
+          id="api-key"
+          name="api-key"
+          type="password"
+          placeholder="Bearer token value"
+          autocomplete="off"
+          required
+        />
+
+        <label for="email">Email address</label>
+        <input
+          id="email"
+          name="email"
+          type="email"
+          placeholder="user@example.com"
+          required
+        />
+
+        <div class="actions">
+          <button type="submit" id="validate-btn">Validate email</button>
+          <button type="button" class="secondary" id="health-btn">Health check</button>
+        </div>
+      </form>
+
+      <div class="meta" id="response-meta">Response will appear here.</div>
+      <pre id="response-output">{}</pre>
+    </main>
+
+    <script>
+      const STORAGE_KEY = "email-validation-api-tester";
+
+      const form = document.getElementById("tester-form");
+      const apiPathInput = document.getElementById("api-path");
+      const apiKeyInput = document.getElementById("api-key");
+      const emailInput = document.getElementById("email");
+      const validateBtn = document.getElementById("validate-btn");
+      const healthBtn = document.getElementById("health-btn");
+      const responseMeta = document.getElementById("response-meta");
+      const responseOutput = document.getElementById("response-output");
+
+      function loadSavedValues() {
+        try {
+          const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+          apiPathInput.value = saved.apiPath || "http://localhost:8787";
+          apiKeyInput.value = saved.apiKey || "";
+          emailInput.value = saved.email || "test@gmail.com";
+        } catch {
+          apiPathInput.value = "http://localhost:8787";
+          emailInput.value = "test@gmail.com";
+        }
+      }
+
+      function saveValues() {
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({
+            apiPath: apiPathInput.value.trim(),
+            apiKey: apiKeyInput.value,
+            email: emailInput.value.trim(),
+          }),
+        );
+      }
+
+      function normalizeBaseUrl(path) {
+        return path.trim().replace(/\/+$/, "");
+      }
+
+      function setLoading(isLoading) {
+        validateBtn.disabled = isLoading;
+        healthBtn.disabled = isLoading;
+      }
+
+      function showResponse(status, body, url, method) {
+        responseMeta.textContent = `${method} ${url} → HTTP ${status}`;
+        responseOutput.textContent =
+          typeof body === "string" ? body : JSON.stringify(body, null, 2);
+      }
+
+      async function callApi(path, method, body) {
+        const baseUrl = normalizeBaseUrl(apiPathInput.value);
+        const url = `${baseUrl}${path}`;
+        const headers = {
+          Authorization: `Bearer ${apiKeyInput.value.trim()}`,
+        };
+
+        const options = { method, headers };
+
+        if (body !== undefined) {
+          headers["Content-Type"] = "application/json";
+          options.body = JSON.stringify(body);
+        }
+
+        saveValues();
+        setLoading(true);
+
+        try {
+          const response = await fetch(url, options);
+          const text = await response.text();
+          let parsed;
+
+          try {
+            parsed = JSON.parse(text);
+          } catch {
+            parsed = text || "(empty response)";
+          }
+
+          showResponse(response.status, parsed, url, method);
+        } catch (error) {
+          showResponse("error", String(error), url, method);
+        } finally {
+          setLoading(false);
+        }
+      }
+
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        callApi("/validate", "POST", { email: emailInput.value.trim() });
+      });
+
+      healthBtn.addEventListener("click", () => {
+        callApi("/", "GET");
+      });
+
+      loadSavedValues();
+    </script>
+  </body>
+</html>

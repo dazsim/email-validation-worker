@@ -225,10 +225,11 @@ You should get `200` on `GET /`, or `401` if the key is wrong — not `500`.
 1. **Syntax** — RFC-style format check (local part, domain labels, length limits)
 2. **Public suffix** — domain suffix validated against the [Public Suffix List](https://publicsuffix.org/) via [`tldts`](https://www.npmjs.com/package/tldts)
 3. **Disposable** — registrable domain checked against a curated blocklist ([`src/data/disposable-domains.ts`](src/data/disposable-domains.ts))
-4. **MX** — DNS MX lookup via Cloudflare DNS-over-HTTPS; falls back to A record per RFC 5321
-5. **Null MX** — rejects domains with RFC 7505 null MX records (`MX 0 .`)
-6. **MX resolves** — each MX hostname must resolve to an A or AAAA record
-7. **Warnings** — soft signals for role addresses (`admin@`, `noreply@`, etc.) and possible typos of common providers (e.g. `gmial.com` → `gmail.com`)
+4. **Known typo domains** — hard-fail curated typosquat domains ([`src/data/known-typo-domains.ts`](src/data/known-typo-domains.ts)); algorithmic typo detection remains a soft warning only
+5. **MX** — DNS MX lookup via Cloudflare DNS-over-HTTPS; falls back to A record per RFC 5321
+6. **Null MX** — rejects domains with RFC 7505 null MX records (`MX 0 .`)
+7. **MX resolves** — each MX hostname must resolve to an A or AAAA record
+8. **Warnings** — soft signals for role addresses (`admin@`, `noreply@`, etc.) and possible typos not on the blocklist (e.g. novel domains one character from a common provider)
 
 DNS MX and hostname resolution results are cached in Workers KV for 1 hour.
 
@@ -239,6 +240,7 @@ DNS MX and hostname resolution results are cached in Workers KV for 1 hour.
 | `invalid_syntax` | Malformed email structure or characters |
 | `invalid_public_suffix` | Domain suffix is not a known ICANN or private public suffix |
 | `disposable` | Domain is on the disposable email blocklist |
+| `known_typo_domain` | Domain is on the known typosquat blocklist; see `typo_suggestion` |
 | `null_mx` | Domain explicitly rejects mail via a null MX record |
 | `no_mx_records` | Domain has no MX or A record for mail |
 | `mx_host_unresolvable` | MX records exist but at least one MX hostname does not resolve |
@@ -248,7 +250,7 @@ DNS MX and hostname resolution results are cached in Workers KV for 1 hour.
 | `warnings` value | Meaning |
 |------------------|---------|
 | `role_address` | Local part matches a common role/no-reply prefix |
-| `possible_typo` | Domain is one character away from a common provider; see `typo_suggestion` |
+| `possible_typo` | Domain is one character away from a common provider but not on the known typo blocklist; see `typo_suggestion` |
 
 ### Licence
 

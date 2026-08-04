@@ -2,6 +2,7 @@ import { parse } from "tldts";
 import { lookupMx, mxHostsResolve } from "./dns";
 import { isDisposableDomain } from "./disposable";
 import type { ValidateResponse, ValidationChecks } from "./types";
+import { getKnownTypoSuggestion, isKnownTypoDomain } from "./typo-domains";
 import { collectWarnings } from "./warnings";
 
 const EMAIL_MAX_LENGTH = 254;
@@ -147,6 +148,22 @@ export async function validateEmail(rawEmail: string, env: Env): Promise<Validat
         not_disposable: false,
       }),
       { reason: "disposable" },
+    );
+  }
+
+  if (isKnownTypoDomain(registrableDomain)) {
+    return buildResponse(
+      email,
+      false,
+      failedChecks({
+        syntax: true,
+        public_suffix: true,
+        not_disposable: true,
+      }),
+      {
+        reason: "known_typo_domain",
+        typoSuggestion: getKnownTypoSuggestion(registrableDomain) ?? undefined,
+      },
     );
   }
 
